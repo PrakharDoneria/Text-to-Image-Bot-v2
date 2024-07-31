@@ -1,4 +1,4 @@
-import { Bot, Context } from "https://deno.land/x/grammy/mod.ts";
+import { Bot } from "https://deno.land/x/grammy/mod.ts";
 
 const botToken = Deno.env.get("BOT_TOKEN") || "";
 const bot = new Bot(botToken);
@@ -6,7 +6,7 @@ const bot = new Bot(botToken);
 const APP_DOWNLOAD_LINK = "https://play.google.com/store/apps/details?id=com.protecgames.verbovisions";
 const API_LINK = "https://www.allthingsdev.co/apimarketplace/verbovisions-v2/668fbd59f7e99865d89db6a1";
 
-const kv = await Deno.openKv("https://api.deno.com/databases/b65c677c-c053-4a23-9c91-ccd7676ea3ac/connect");
+const kv = await Deno.openKv();
 
 bot.command("start", (ctx) => ctx.reply("Welcome! Use /help to get information about available commands."));
 
@@ -36,7 +36,7 @@ bot.command("save", async (ctx) => {
   }
 
   try {
-    await kv.set(ctx.from.id.toString(), apiKey);
+    await kv.set(["api_keys", ctx.from.id.toString()], apiKey);
     ctx.reply("Your API key has been saved successfully.");
   } catch (error) {
     console.error("Error saving API key:", error);
@@ -52,7 +52,7 @@ bot.command("imagine", async (ctx) => {
   }
 
   try {
-    const apiKey = await kv.get(ctx.from.id.toString());
+    const apiKey = (await kv.get(["api_keys", ctx.from.id.toString()])).value as string;
 
     if (!apiKey) {
       return ctx.reply("No API key found. Please use /save {api_key} to save your API key.");
