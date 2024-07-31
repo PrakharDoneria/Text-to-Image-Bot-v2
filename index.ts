@@ -1,6 +1,5 @@
 import { Bot } from "https://deno.land/x/grammy/mod.ts";
 import { serve } from "https://deno.land/std/http/server.ts";
-import { cron } from "https://deno.land/x/croner/mod.ts";
 
 const botToken = Deno.env.get("BOT_TOKEN") || "";
 const bot = new Bot(botToken);
@@ -117,7 +116,7 @@ async function startServer() {
 }
 
 function startCronJob() {
-  cron("Ping server every 1 minute", "*/1 * * * *", async () => {
+  Deno.cron("Ping server every 1 minute", "*/1 * * * *", async () => {
     try {
       await fetch("https://verbovisions-bot.deno.dev/");
       console.log("Server pinged successfully");
