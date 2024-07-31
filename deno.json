@@ -1,0 +1,23 @@
+{
+  "tasks": {
+    "start": "deno run --allow-net --allow-env index.ts"
+  },
+  "fmt": {
+    "options": {
+      "useTabs": false,
+      "lineWidth": 80,
+      "indentWidth": 2,
+      "singleQuote": true,
+      "proseWrap": "always"
+    }
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    }
+  },
+  "imports": {
+    "grammy/": "https://deno.land/x/grammy@1.10.1/",
+    "grammy/types": "https://deno.land/x/grammy@1.10.1/types.d.ts"
+  }
+}
