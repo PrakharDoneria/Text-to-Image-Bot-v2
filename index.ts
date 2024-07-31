@@ -1,4 +1,4 @@
-import { Bot } from "https://deno.land/x/grammy/mod.ts";
+import { Bot, webhookCallback } from "https://deno.land/x/grammy/mod.ts";
 import { serve } from "https://deno.land/std/http/server.ts";
 
 const botToken = Deno.env.get("BOT_TOKEN") || "";
@@ -101,11 +101,15 @@ bot.command("imagine", async (ctx) => {
   }
 });
 
+const handleUpdate = webhookCallback(bot, "std/http");
+
 async function handleRequest(req: Request): Promise<Response> {
-  if (req.method === "POST" && req.url.endswith("/webhook")) {
-    const update = await req.json();
-    bot.handleUpdate(update);
-    return new Response("OK", { status: 200 });
+  if (req.method === "POST" && new URL(req.url).pathname === `/${bot.token}`) {
+    try {
+      return await handleUpdate(req);
+    } catch (err) {
+      console.error(err);
+    }
   }
   if (req.method === "GET" && req.url.endsWith("/")) {
     return new Response("Server is active", { status: 200 });
@@ -120,8 +124,17 @@ async function startServer() {
   }
 }
 
-await bot.api.setWebhook("https://verbovisions-bot.deno.dev/webhook");
+
+async function setWebhook() {
+  const webhookUrl = `https://api.telegram.org/bot${botToken}/setWebhook?url=https://verbovisions-bot.deno.dev/`;
+  const response = await fetch(webhookUrl);
+  if (response.ok) {
+    console.log("Webhook was set successfully");
+  } else {
+    console.error("Failed to set webhook", await response.text());
+  }
+}
+
+await setWebhook();
 
 startServer().catch(console.error);
-
-bot.start();
