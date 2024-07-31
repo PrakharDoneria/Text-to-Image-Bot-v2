@@ -117,24 +117,17 @@ async function handleRequest(req: Request): Promise<Response> {
   return new Response("Not Found", { status: 404 });
 }
 
-async function startServer() {
-  console.log("Server is running on http://localhost:8000");
-  for await (const req of serve("0.0.0.0:8000")) {
-    handleRequest(req).then(response => req.respond(response));
+
+Deno.serve(async (req) => {
+  if (req.method === "POST") {
+    const url = new URL(req.url);
+    if (url.pathname.slice(1) === bot.token) {
+      try {
+        return await handleUpdate(req);
+      } catch (err) {
+        console.error(err);
+      }
+    }
   }
-}
-
-
-async function setWebhook() {
-  const webhookUrl = `https://api.telegram.org/bot${botToken}/setWebhook?url=https://verbovisions-bot.deno.dev/`;
-  const response = await fetch(webhookUrl);
-  if (response.ok) {
-    console.log("Webhook was set successfully");
-  } else {
-    console.error("Failed to set webhook", await response.text());
-  }
-}
-
-await setWebhook();
-
-startServer().catch(console.error);
+  return new Response();
+});
