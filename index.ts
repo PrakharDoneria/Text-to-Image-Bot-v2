@@ -102,6 +102,11 @@ bot.command("imagine", async (ctx) => {
 });
 
 async function handleRequest(req: Request): Promise<Response> {
+  if (req.method === "POST" && req.url.endswith("/webhook")) {
+    const update = await req.json();
+    bot.handleUpdate(update);
+    return new Response("OK", { status: 200 });
+  }
   if (req.method === "GET" && req.url.endsWith("/")) {
     return new Response("Server is active", { status: 200 });
   }
@@ -115,18 +120,8 @@ async function startServer() {
   }
 }
 
-function startCronJob() {
-  Deno.cron("Ping server every 1 minute", "*/1 * * * *", async () => {
-    try {
-      await fetch("https://verbovisions-bot.deno.dev/");
-      console.log("Server pinged successfully");
-    } catch (error) {
-      console.error("Error pinging server:", error);
-    }
-  });
-}
+await bot.api.setWebhook("https://verbovisions-bot.deno.dev/webhook");
 
 startServer().catch(console.error);
-startCronJob();
 
 bot.start();
