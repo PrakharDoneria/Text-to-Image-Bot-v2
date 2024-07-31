@@ -1,4 +1,6 @@
 import { Bot } from "https://deno.land/x/grammy/mod.ts";
+import { serve } from "https://deno.land/std/http/server.ts";
+import { cron } from "https://deno.land/x/croner/mod.ts";
 
 const botToken = Deno.env.get("BOT_TOKEN") || "";
 const bot = new Bot(botToken);
@@ -99,5 +101,33 @@ bot.command("imagine", async (ctx) => {
     await ctx.api.deleteMessage(ctx.chat.id, initialMessage.message_id);
   }
 });
+
+async function handleRequest(req: Request): Promise<Response> {
+  if (req.method === "GET" && req.url.endsWith("/")) {
+    return new Response("Server is active", { status: 200 });
+  }
+  return new Response("Not Found", { status: 404 });
+}
+
+async function startServer() {
+  console.log("Server is running on http://localhost:8000");
+  for await (const req of serve("0.0.0.0:8000")) {
+    handleRequest(req).then(response => req.respond(response));
+  }
+}
+
+function startCronJob() {
+  cron("Ping server every 1 minute", "*/1 * * * *", async () => {
+    try {
+      await fetch("https://verbovisions-bot.deno.dev/");
+      console.log("Server pinged successfully");
+    } catch (error) {
+      console.error("Error pinging server:", error);
+    }
+  });
+}
+
+startServer().catch(console.error);
+startCronJob();
 
 bot.start();
