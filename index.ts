@@ -103,20 +103,6 @@ bot.command("imagine", async (ctx) => {
 
 const handleUpdate = webhookCallback(bot, "std/http");
 
-async function handleRequest(req: Request): Promise<Response> {
-  if (req.method === "POST" && new URL(req.url).pathname === `/${bot.token}`) {
-    try {
-      return await handleUpdate(req);
-    } catch (err) {
-      console.error(err);
-    }
-  }
-  if (req.method === "GET" && req.url.endsWith("/")) {
-    return new Response("Server is active", { status: 200 });
-  }
-  return new Response("Not Found", { status: 404 });
-}
-
 
 Deno.serve(async (req) => {
   if (req.method === "POST") {
