@@ -103,8 +103,7 @@ bot.command("imagine", async (ctx) => {
 
 const handleUpdate = webhookCallback(bot, "std/http");
 
-
-Deno.serve(async (req) => {
+serve(async (req) => {
   if (req.method === "POST") {
     const url = new URL(req.url);
     if (url.pathname.slice(1) === bot.token) {
@@ -117,3 +116,5 @@ Deno.serve(async (req) => {
   }
   return new Response();
 });
+
+await fetch(`https://api.telegram.org/bot${botToken}/setWebhook?url=https://verbovisions-bot.deno.dev/${botToken}`);
