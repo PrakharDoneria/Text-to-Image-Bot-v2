@@ -1,148 +1,120 @@
-import { Bot, InlineKeyboard, webhookCallback } from "https://deno.land/x/grammy@v1.30.0/mod.ts";
+import { Bot, webhookCallback } from "https://deno.land/x/grammy/mod.ts";
 import { serve } from "https://deno.land/std/http/server.ts";
 
-const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
-if (!botToken) {
-  throw new Error("TELEGRAM_BOT_TOKEN is not set in the environment variables");
-}
-
+const botToken = Deno.env.get("BOT_TOKEN") || "";
 const bot = new Bot(botToken);
-const url = "https://emkc.org/api/v2/piston/execute";
 
-async function runCode(sourceCode: string, language: string, version: string) {
+const APP_DOWNLOAD_LINK = "https://play.google.com/store/apps/details?id=com.protecgames.verbovisions";
+const API_LINK = "https://www.allthingsdev.co/apimarketplace/verbovisions-v2/668fbd59f7e99865d89db6a1";
+
+const kv = await Deno.openKv();
+
+bot.command("start", (ctx) => ctx.reply("Welcome! Use /help to get information about available commands.", { reply_to_message_id: ctx.message.message_id }));
+
+bot.command("help", (ctx) => {
+  ctx.reply(`Available commands:
+/start - Start the bot
+/help - Get information about available commands
+/download - Get the link to download the Android app
+/api - Get the API subscription link
+/save {api_key} - Save your API key for image generation
+/imagine {prompt} - Generate an image based on the prompt`, { reply_to_message_id: ctx.message.message_id });
+});
+
+bot.command("download", (ctx) => {
+  ctx.reply(`Download the Android app: ${APP_DOWNLOAD_LINK}`, { reply_to_message_id: ctx.message.message_id });
+});
+
+bot.command("api", (ctx) => {
+  ctx.reply(`Make your own client, subscribe the API: ${API_LINK}`, { reply_to_message_id: ctx.message.message_id });
+});
+
+bot.command("save", async (ctx) => {
+  const apiKey = ctx.match?.trim();
+
+  if (!apiKey) {
+    return ctx.reply("Please provide your API key. Use /save {api_key}", { reply_to_message_id: ctx.message.message_id });
+  }
+
   try {
-    const payload = {
-      language,
-      version,
-      files: [{ content: sourceCode }],
-      args: [],
-      stdin: "",
-      log: 0,
+    await kv.set(["api_keys", ctx.from.id.toString()], apiKey);
+    ctx.reply("Your API key has been saved successfully.", { reply_to_message_id: ctx.message.message_id });
+  } catch (error) {
+    console.error("Error saving API key:", error);
+    ctx.reply("An error occurred while saving your API key.", { reply_to_message_id: ctx.message.message_id });
+  }
+});
+
+bot.command("imagine", async (ctx) => {
+  const prompt = ctx.match;
+
+  if (!prompt) {
+    return ctx.reply("Prompt is required. Use /imagine {prompt}", { reply_to_message_id: ctx.message.message_id });
+  }
+
+  try {
+    const apiKey = (await kv.get(["api_keys", ctx.from.id.toString()])).value as string;
+
+    if (!apiKey) {
+      return ctx.reply("No API key found. Please use /save {api_key} to save your API key.", { reply_to_message_id: ctx.message.message_id });
+    }
+
+    const myHeaders = new Headers();
+    myHeaders.append("x-apihub-key", apiKey);
+    myHeaders.append("x-apihub-host", "VerboVisions-v2.allthingsdev.co");
+    myHeaders.append("x-apihub-endpoint", "fcec7430-1bd2-4eca-a032-0770b2d9122e");
+
+    const requestOptions = {
+      method: "GET",
+      headers: myHeaders,
+      redirect: "follow",
     };
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+
+    const url = new URL("https://VerboVisions-v2.proxy-production.allthingsdev.co/generate");
+    url.searchParams.append("prompt", prompt);
+
+    const initialMessage = await ctx.reply("Making the magic happen ✨", { reply_to_message_id: ctx.message.message_id });
+
+    const response = await fetch(url.toString(), requestOptions);
+
     if (response.ok) {
-      return await response.json();
+      const result = await response.json();
+      const imageUrl = result.img;
+
+      await ctx.replyWithPhoto(
+        imageUrl,
+        {
+          caption: `Here is your image for prompt: ${prompt}\nDownload the app: ${APP_DOWNLOAD_LINK}\nSubscribe to the API: ${API_LINK}`,
+          reply_to_message_id: ctx.message.message_id,
+        }
+      );
+
+      await ctx.api.deleteMessage(ctx.chat.id, initialMessage.message_id);
     } else {
-      return { error: `Request failed with status code ${response.status}` };
+      ctx.reply(`Failed to fetch image. Status code: ${response.status}`, { reply_to_message_id: ctx.message.message_id });
+      await ctx.api.deleteMessage(ctx.chat.id, initialMessage.message_id);
     }
   } catch (error) {
-    console.error("Error running code:", error);
-    return { error: "An error occurred while running the code." };
-  }
-}
-
-async function handleCodeCommand(ctx: any, language: string, version: string) {
-  const chatId = ctx.chat.id;
-  let code = "";
-  const onMessage = (message: string) => {
-    if (message === "") {
-      return;
-    }
-    code += message + "\n";
-  };
-  bot.on("message:text", (messageCtx: any) => {
-    if (messageCtx.chat.id === chatId) {
-      onMessage(messageCtx.message.text);
-    }
-  });
-  try {
-    await ctx.api.sendChatAction(chatId, "typing");
-    await ctx.api.sendMessage(chatId, `Please send your ${language} code line by line. Send an empty message when you're done.`);
-    setTimeout(async () => {
-      try {
-        const result = await runCode(code.trim(), language, version);
-        const output = result.run?.output || `Error: ${result.error}`;
-        await ctx.api.sendMessage(chatId, output);
-      } catch (error) {
-        console.error("Error sending result:", error);
-        await ctx.api.sendMessage(chatId, "An error occurred while sending the result.");
-      }
-    }, 60000);
-  } catch (error) {
-    console.error("Error handling code command:", error);
-    await ctx.api.sendMessage(chatId, "An error occurred while processing your code.");
-  }
-}
-
-bot.command("start", async (ctx) => {
-  try {
-    const chatId = ctx.chat.id;
-    await ctx.api.sendMessage(chatId, "Welcome to the code execution bot! Use the following commands to run your code:\n\n/start - Get a welcome message and list of commands\n/help - Get help on how to use the bot\n/languages - List available languages and their commands\n/donate - Support the bot");
-  } catch (error) {
-    console.error("Error handling /start command:", error);
-    await ctx.api.sendMessage(ctx.chat.id, "An error occurred while processing your request.");
+    console.error("Error:", error);
+    ctx.reply(`An error occurred: ${JSON.stringify(error, null, 2)}`, { reply_to_message_id: ctx.message.message_id });
+    await ctx.api.deleteMessage(ctx.chat.id, initialMessage.message_id);
   }
 });
-
-bot.command("help", async (ctx) => {
-  try {
-    const chatId = ctx.chat.id;
-    await ctx.api.sendMessage(chatId, "This bot allows you to execute code in various programming languages.\n\nTo use it, send a command followed by your code. For example:\n/python\n<your code here>\n\nCommands:\n/start - Get a welcome message and list of commands\n/help - Get help on how to use the bot\n/languages - List available languages and their commands\n/donate - Support the bot");
-  } catch (error) {
-    console.error("Error handling /help command:", error);
-    await ctx.api.sendMessage(ctx.chat.id, "An error occurred while processing your request.");
-  }
-});
-
-bot.command("languages", async (ctx) => {
-  try {
-    const chatId = ctx.chat.id;
-    await ctx.api.sendMessage(chatId, "Available languages:\n\nPython - /python\nDart - /dart\nJavaScript - /javascript\nC# - /csharp\nJava - /java\nKotlin - /kotlin\nLua - /lua\nPHP - /php\nPerl - /perl\nRuby - /ruby\nRust - /rust\nSwift - /swift\nSQLite3 - /sqlite3\n/donate - Support the bot");
-  } catch (error) {
-    console.error("Error handling /languages command:", error);
-    await ctx.api.sendMessage(ctx.chat.id, "An error occurred while processing your request.");
-  }
-});
-
-bot.command("donate", async (ctx) => {
-  try {
-    const chatId = ctx.chat.id;
-    const keyboard = new InlineKeyboard().add({ text: "Donate via PayPal", url: "https://paypal.me/prakhardoneria" }, { text: "Buy Me a Coffee", url: "https://www.buymeacoffee.com/prakhardoneria.in" });
-    await ctx.api.sendMessage(chatId, "If you appreciate this bot and want to support its development, you can donate via the following options:", { reply_markup: keyboard });
-  } catch (error) {
-    console.error("Error handling /donate command:", error);
-    await ctx.api.sendMessage(ctx.chat.id, "An error occurred while processing your request.");
-  }
-});
-
-bot.command("python", (ctx) => handleCodeCommand(ctx, "python", "3.10.0"));
-bot.command("dart", (ctx) => handleCodeCommand(ctx, "dart", "2.19.6"));
-bot.command("javascript", (ctx) => handleCodeCommand(ctx, "javascript", "1.32.3"));
-bot.command("csharp", (ctx) => handleCodeCommand(ctx, "csharp", "6.12.0"));
-bot.command("java", (ctx) => handleCodeCommand(ctx, "java", "15.0.2"));
-bot.command("kotlin", (ctx) => handleCodeCommand(ctx, "kotlin", "1.8.20"));
-bot.command("lua", (ctx) => handleCodeCommand(ctx, "lua", "5.4.4"));
-bot.command("php", (ctx) => handleCodeCommand(ctx, "php", "8.2.3"));
-bot.command("perl", (ctx) => handleCodeCommand(ctx, "perl", "5.36.0"));
-bot.command("ruby", (ctx) => handleCodeCommand(ctx, "ruby", "3.0.1"));
-bot.command("rust", (ctx) => handleCodeCommand(ctx, "rust", "1.68.2"));
-bot.command("swift", (ctx) => handleCodeCommand(ctx, "swift", "5.3.3"));
-bot.command("sqlite3", (ctx) => handleCodeCommand(ctx, "sqlite3", "3.36.0"));
 
 const handleUpdate = webhookCallback(bot, "std/http");
 
 serve(async (req) => {
   if (req.method === "POST") {
     const url = new URL(req.url);
-    if (url.pathname.slice(1) === botToken) {
+    if (url.pathname.slice(1) === bot.token) {
       try {
         return await handleUpdate(req);
       } catch (err) {
-        console.error("Error handling update:", err);
+        console.error(err);
       }
     }
   }
   return new Response();
 });
 
-try {
-  const webhookUrl = `https://coderunner.deno.dev/${botToken}`;
-  await fetch(`https://api.telegram.org/bot${botToken}/setWebhook?url=${webhookUrl}`);
-  console.log("Webhook set successfully.");
-} catch (error) {
-  console.error("Error setting webhook:", error);
-}
+await fetch(`https://api.telegram.org/bot${botToken}/setWebhook?url=https://verbovisions-bot.deno.dev/${botToken}`);
